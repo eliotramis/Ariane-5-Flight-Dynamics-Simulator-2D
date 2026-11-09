@@ -17,6 +17,27 @@ Ce projet implémente un simulateur de trajectoire d'ascension pour le lanceur A
 <br>
 <br>
 
+**Structure du projet** :
+
+```
+main.py              # point d'entrée : simulation, rapport, graphiques
+ariane5/
+  constants.py       # constantes physiques, tables ISA et Cd(Mach)
+  atmosphere.py      # modèle ISA, vitesse du son, Mach, Cd
+  vehicle.py         # masses, surfaces, propulsion d'Ariane 5
+  guidance.py        # loi de tangage
+  propulsion.py      # phases de vol, poussée et débit massique
+  dynamics.py        # second membre des équations du mouvement
+  simulation.py      # intégration phase par phase (solve_ivp)
+  analysis.py        # pression dynamique et Max-Q
+  plotting.py        # rapport de vol et graphiques
+```
+
+Lancement : `pip install numpy scipy matplotlib` puis `python main.py`.
+
+<br>
+<br>
+
 **Modèles Physiques** :
 
 1. Équation de la dynamique
