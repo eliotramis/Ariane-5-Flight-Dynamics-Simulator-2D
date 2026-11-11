@@ -4,7 +4,7 @@ import math
 
 from . import vehicle as v
 from .atmosphere import atmosphere, calculer_cd
-from .constants import G_0, R_T
+from .constants import MU_TERRE, OMEGA_EFF, R_T
 from .guidance import angle_tangage_deg
 from .propulsion import Phase, poussee_et_debit
 
@@ -23,7 +23,12 @@ def gravite_norme(r):
     """Norme de l'accélération de la pesanteur à la distance r (m/s^2)."""
     if r <= 0.0:
         return 0.0
-    return G_0 * (R_T / r) ** 2
+    return MU_TERRE / r**2   # ~9,798 m/s^2 au sol (et non G_0 = 9,80665)
+
+
+def vitesse_atmosphere(x, y):
+    """Vitesse d'entraînement de l'atmosphère (rotation de la Terre), vers l'est."""
+    return OMEGA_EFF * (y + R_T), -OMEGA_EFF * x
 
 
 def surface_reference(phase):
@@ -49,13 +54,16 @@ def dynamique_fusee(t, state, phase):
     p_y = -m * g_r * (y + R_T) / r
 
     # - Traînée -
+    # Calculée avec la vitesse relative à l'atmosphère (qui tourne avec la Terre)
     d_x = d_y = 0.0
-    v_norme = math.hypot(vx, vy)
+    w_x, w_y = vitesse_atmosphere(x, y)
+    vr_x, vr_y = vx - w_x, vy - w_y
+    v_norme = math.hypot(vr_x, vr_y)
     if v_norme > 1.0 and rho > 0.0:
         c_d = calculer_cd(temp, v_norme)
         d_norme = 0.5 * rho * v_norme**2 * c_d * surface_reference(phase)
-        d_x = -d_norme * vx / v_norme
-        d_y = -d_norme * vy / v_norme
+        d_x = -d_norme * vr_x / v_norme
+        d_y = -d_norme * vr_y / v_norme
 
     # - Poussée -
     f_t, dm_dt = poussee_et_debit(phase, t, pression)

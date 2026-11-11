@@ -6,8 +6,8 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from . import vehicle as v
-from .constants import R_T
-from .dynamics import altitude, dynamique_fusee
+from .constants import OMEGA_EFF, R_T
+from .dynamics import altitude, dynamique_fusee, vitesse_atmosphere
 from .propulsion import Phase
 
 RTOL = 1e-8
@@ -31,7 +31,14 @@ class Trajectoire:
 
     @property
     def vitesses(self):
+        """Vitesse inertielle (référentiel géocentrique)."""
         return np.hypot(self.vx, self.vy)
+
+    @property
+    def vitesses_relatives(self):
+        """Vitesse par rapport au sol / à l'atmosphère (celle de la télémétrie)."""
+        w_x, w_y = vitesse_atmosphere(self.x, self.y)
+        return np.hypot(self.vx - w_x, self.vy - w_y)
 
 
 def _evt_impact_sol(t, state, phase):
@@ -66,17 +73,23 @@ def _evenement_declenche(sol, events, evenement):
 def simuler(t_final=20_000.0, pas=0.1):
     """Simule le vol complet et renvoie une `Trajectoire`.
 
-    Phases : EAP+EPC -> EPC -> ESC (jusqu'à épuisement) -> vol balistique.
+    Phases : EAP+EPC -> EPC (largage coiffe) -> arrêt Vulcain, séparation EPC
+    -> ESC (jusqu'à épuisement) -> vol balistique.
     La simulation s'arrête dès qu'un impact au sol est détecté.
     """
-    etat = [0.0, 0.0, 0.0, 0.0, v.M_0]
+    etat = [0.0, 0.0, OMEGA_EFF * R_T, 0.0, v.M_0]   # départ entraîné par la Terre
     segments = []
 
+    sol_ = [_evt_impact_sol]
     plan = [
         # (phase, t_début, t_fin, événements, masse larguée en fin de phase)
-        (Phase.EAP_EPC, 0.0, v.T_SEP_EAP, [_evt_impact_sol], v.M_EAP_SECHE),
-        (Phase.EPC, v.T_SEP_EAP, v.T_SEP_EPC, [_evt_impact_sol], v.M_EPC_SECHE),
-        (Phase.ESC, v.T_SEP_EPC, t_final, [_evt_fin_combustion, _evt_impact_sol], 0.0),
+        (Phase.EAP_EPC, 0.0, v.T_SEP_EAP, sol_, v.M_EAP_SECHE),
+        (Phase.EPC, v.T_SEP_EAP, v.T_COIFFE, sol_, v.M_COIFFE),
+        (Phase.EPC, v.T_COIFFE, v.T_ARRET_EPC, sol_, 0.0),
+        # Arrêt Vulcain -> séparation EPC -> allumage HM7B : vols sans poussée
+        (Phase.BALISTIQUE, v.T_ARRET_EPC, v.T_SEP_EPC, sol_, v.M_EPC_SECHE),
+        (Phase.BALISTIQUE, v.T_SEP_EPC, v.T_ALLUMAGE_ESC, sol_, 0.0),
+        (Phase.ESC, v.T_ALLUMAGE_ESC, t_final, [_evt_fin_combustion, _evt_impact_sol], 0.0),
     ]
 
     for phase, t0, t1, events, masse_larguee in plan:
